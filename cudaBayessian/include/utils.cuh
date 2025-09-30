@@ -23,3 +23,5 @@ void printClassProportions(const float *data, int rows, int targetColumnIndex,
 
 float *filterByValue(const float *data, int rows, int cols,
                      int columnIndex, float targetValue, int &newRows);
+
+float *columnMajorToRowMajor(const float *colMajor, int rows, int cols);

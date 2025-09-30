@@ -49,6 +49,9 @@ datos_test <- datos[test_indices, ]
 cat("Proporción en entrenamiento:\n")
 prop.table(table(datos_train$diabetes))
 cat("Proporción en prueba:\n")
+
+
+
 prop.table(table(datos_test$diabetes))
 
 # ============================================================================
@@ -79,8 +82,9 @@ for (var in variables) {
 }
 
 
-
+stats_neg
 prior_pos <- nrow(train_pos) / nrow(datos_train)
+
 prior_neg <- nrow(train_neg) / nrow(datos_train)
 
 cat("Probabilidad a priori P(Positivo):", prior_pos, "\n")
