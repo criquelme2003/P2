@@ -1,4 +1,4 @@
-# Resultados del Clasificador Naive Bayes
+# Resultados del Clasificador Naive Bayes umbral = -0.8
 
 ## Información del Dataset
 - **Columna objetivo:** 8 | Outcome
