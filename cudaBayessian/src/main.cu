@@ -4,6 +4,8 @@
 #include <core.cuh>
 #include <iostream>
 #include <vector>
+#include <set>
+#include <random>
 int main()
 {
 
@@ -77,54 +79,112 @@ int main()
                   << ", SD: " << stats_neg[j].sd << std::endl;
     }
 
-    float prior_pos = (float)train_pos_rows / train_rows;
-    float prior_neg = (float)train_neg_rows / train_rows;
+    std::vector<MonteCarloIteration> mc_results = monteCarloThresholdSearch(datos_train, train_rows, cols, targetColumnIndex, 1000);
 
-    // trasponer data a orignial para entrenamiento
-    int n_test = test_indices.size();
-    float *datos_test_rowmajor = columnMajorToRowMajor(datos_test, n_test, cols);
+    analyzeMonteCarloResults(mc_results);
 
-    int *predictions = new int[n_test];
-    float *log_likelihood_pos = new float[n_test];
-    float *log_likelihood_neg = new float[n_test];
-
-    // Ejecutar clasificación
-    clasificarBayesiano(datos_test_rowmajor, stats_pos, stats_neg,
-                        prior_pos, prior_neg,
-                        predictions, log_likelihood_pos, log_likelihood_neg,
-                        n_test, cols, targetColumnIndex, -0.8f);
-
-    int *y_true = new int[n_test];
-    for (int i = 0; i < n_test; i++)
+    // Obtener umbral óptimo
+    float optimal_threshold = 0.0f;
+    for (const auto &r : mc_results)
     {
-        y_true[i] = (int)datos_test_rowmajor[i * cols + targetColumnIndex];
+        optimal_threshold += r.optimal_threshold;
+    }
+    optimal_threshold /= mc_results.size();
+
+    std::cout << "Usando umbral final: " << optimal_threshold << std::endl;
+
+    // ========================================
+    // FASE 2: ENTRENAMIENTO FINAL
+    // ========================================
+    std::cout << "\n##########################################" << std::endl;
+    std::cout << "# FASE 2: ENTRENAMIENTO FINAL           #" << std::endl;
+    std::cout << "##########################################\n"
+              << std::endl;
+
+    ColumnStats *final_stats_pos = new ColumnStats[cols];
+    ColumnStats *final_stats_neg = new ColumnStats[cols];
+
+    // Entrenar con TODO el train set
+    trainNaiveBayesFinal(datos_train, train_rows, cols, targetColumnIndex,
+                         final_stats_pos, final_stats_neg);
+
+    // Mostrar estadísticas finales
+    std::cout << "\nEstadísticas del modelo final:" << std::endl;
+    for (int j = 0; j < cols; j++)
+    {
+        std::cout << "Variable: " << headers[j] << std::endl;
+        std::cout << "  Clase Positiva - Media: " << final_stats_pos[j].mean
+                  << ", SD: " << final_stats_pos[j].sd << std::endl;
+        std::cout << "  Clase Negativa - Media: " << final_stats_neg[j].mean
+                  << ", SD: " << final_stats_neg[j].sd << std::endl;
+    }
+
+    // ========================================
+    // FASE 3: EVALUACIÓN EN TEST
+    // ========================================
+    std::cout << "\n##########################################" << std::endl;
+    std::cout << "# FASE 3: EVALUACIÓN EN TEST            #" << std::endl;
+    std::cout << "##########################################\n"
+              << std::endl;
+
+    // Convertir test a row-major
+    float *test_data_rowmajor = columnMajorToRowMajor(datos_test, test_indices.size(), cols);
+
+    // Calcular priors finales
+    int final_pos_count, final_neg_count;
+    float *temp_pos = filterByValue(datos_train, train_rows, cols,
+                                    targetColumnIndex, 1.0f, final_pos_count);
+    float *temp_neg = filterByValue(datos_train, train_rows, cols,
+                                    targetColumnIndex, 0.0f, final_neg_count);
+    delete[] temp_pos;
+    delete[] temp_neg;
+
+    float prior_pos = (float)final_pos_count / train_rows;
+    float prior_neg = (float)final_neg_count / train_rows;
+
+    std::cout << "Priors: P(pos)=" << prior_pos << ", P(neg)=" << prior_neg << std::endl;
+
+    int test_rows = test_indices.size();
+    // Arrays para predicciones
+    int *predictions = new int[test_rows];
+    float *log_likelihood_pos = new float[test_rows];
+    float *log_likelihood_neg = new float[test_rows];
+
+    // Clasificar usando umbral óptimo
+    clasificarBayesiano(test_data_rowmajor,
+                        final_stats_pos,
+                        final_stats_neg,
+                        prior_pos,
+                        prior_neg,
+                        predictions,
+                        log_likelihood_pos,
+                        log_likelihood_neg,
+                        test_rows,
+                        cols,
+                        targetColumnIndex,
+                        optimal_threshold); // ← Umbral de Monte Carlo
+
+    // Extraer labels verdaderos
+    int *y_true = new int[test_rows];
+    for (int i = 0; i < test_rows; i++)
+    {
+        y_true[i] = (int)test_data_rowmajor[i * cols + targetColumnIndex];
     }
 
     // Calcular métricas
-    Metrics metricas = calcularMetricas(y_true, predictions, n_test);
+    Metrics metricas_optimized = calcularMetricas(y_true, predictions, test_rows);
 
-    // Mostrar resultados
-    printMetrics(metricas);
+    std::cout << "\n=== RESULTADOS CON UMBRAL OPTIMIZADO ===" << std::endl;
+    std::cout << "Umbral usado: " << optimal_threshold << std::endl;
+    printMetrics(metricas_optimized);
 
-    printf("datos totales %d\n", n_test);
-    // Liberar
-    delete[] y_true;
-
-    // Liberar memoria
+       delete[] final_stats_pos;
+    delete[] final_stats_neg;
+    delete[] test_data_rowmajor;
     delete[] predictions;
     delete[] log_likelihood_pos;
     delete[] log_likelihood_neg;
-
-    // Liberar memoria
-    delete[] stats_pos;
-    delete[] stats_neg;
-    cudaFree(d_pos_data);
-    cudaFree(d_neg_data);
-    delete[] train_pos;
-    delete[] train_neg;
-    delete[] h_data;
+    delete[] y_true;
     delete[] datos_train;
     delete[] datos_test;
-
-    return 0;
 }

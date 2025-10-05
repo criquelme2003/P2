@@ -1,5 +1,5 @@
 #include <iostream>
-
+#include <random>
 float *readCSV(const std::string &filename, int &rows, int &cols,
                std::vector<std::string> &headers, char delimiter = ',',
                bool hasHeader = true);
@@ -25,3 +25,8 @@ float *filterByValue(const float *data, int rows, int cols,
                      int columnIndex, float targetValue, int &newRows);
 
 float *columnMajorToRowMajor(const float *colMajor, int rows, int cols);
+
+void bootstrapSample(int n_samples,
+                     std::vector<int> &bootstrap_indices,
+                     std::vector<int> &oob_indices,
+                     std::mt19937 &rng);
