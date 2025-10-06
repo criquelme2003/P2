@@ -58,3 +58,55 @@ __global__ void evaluateThresholdsKernel(
     // Guardar resultado
     youden_scores[tid] = youden;
 }
+
+__global__ void evaluateThresholdsF2Kernel(
+    const float* log_diffs,
+    const int* y_true,
+    const float* thresholds,
+    float* f2_scores,           // CAMBIO: Antes era youden_scores
+    int n_samples,
+    int n_thresholds
+) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (tid >= n_thresholds) return;
+    
+    float threshold = thresholds[tid];
+    
+    // Calcular Confusion Matrix
+    int TP = 0, TN = 0, FP = 0, FN = 0;
+    
+    for (int i = 0; i < n_samples; i++) {
+        int prediction = (log_diffs[i] > threshold) ? 1 : 0;
+        int truth = y_true[i];
+        
+        if (prediction == 1 && truth == 1) TP++;
+        else if (prediction == 0 && truth == 0) TN++;
+        else if (prediction == 1 && truth == 0) FP++;
+        else FN++;
+    }
+    
+    // ============================================================
+    // CAMBIO: Calcular F2-Score en lugar de Youden
+    // ============================================================
+    // F2 = (1 + 2²) × (precision × recall) / (2² × precision + recall)
+    // F2 = 5 × (precision × recall) / (4 × precision + recall)
+    
+    float precision = 0.0f;
+    float recall = 0.0f;
+    
+    if ((TP + FP) > 0) {
+        precision = (float)TP / (float)(TP + FP);
+    }
+    
+    if ((TP + FN) > 0) {
+        recall = (float)TP / (float)(TP + FN);
+    }
+    
+    float f2 = 0.0f;
+    if (precision + recall > 0.0f) {
+        f2 = 5.0f * precision * recall / (4.0f * precision + recall);
+    }
+    
+    f2_scores[tid] = f2;
+}

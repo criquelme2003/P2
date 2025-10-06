@@ -35,6 +35,15 @@ __global__ void evaluateThresholdsKernel(
     int n_samples,
     int n_thresholds);
 
+__global__ void evaluateThresholdsF2Kernel(
+    const float* log_diffs,
+    const int* y_true,
+    const float* thresholds,
+    float* f2_scores,           // CAMBIO: Antes era youden_scores
+    int n_samples,
+    int n_thresholds
+);
+
 __global__ void predictLogDifferencesKernel(
     const float *test_data,       // [n_samples × cols] datos en row-major
     const ColumnStats *stats_pos, // [cols] estadísticas clase positiva

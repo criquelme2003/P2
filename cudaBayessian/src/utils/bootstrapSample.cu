@@ -42,6 +42,84 @@ void bootstrapSample(int n_samples,
     }
 }
 
+
+void bootstrapSampleBalanced(
+    int n_samples,
+    const int* labels,              // Array con labels (0 o 1)
+    std::vector<int>& bootstrap_indices,
+    std::vector<int>& oob_indices,
+    std::mt19937& rng
+) {
+    bootstrap_indices.clear();
+    oob_indices.clear();
+    
+    // ============================================================
+    // 1. SEPARAR ÍNDICES POR CLASE
+    // ============================================================
+    std::vector<int> pos_indices;
+    std::vector<int> neg_indices;
+    
+    for (int i = 0; i < n_samples; i++) {
+        if (labels[i] == 1) {
+            pos_indices.push_back(i);
+        } else {
+            neg_indices.push_back(i);
+        }
+    }
+    
+    int n_pos = pos_indices.size();
+    int n_neg = neg_indices.size();
+    
+    // ============================================================
+    // 2. CALCULAR TAMAÑO BALANCEADO
+    // ============================================================
+    // Cada clase aportará la mitad del bootstrap
+    int samples_per_class = n_samples / 2;
+    
+    bootstrap_indices.reserve(samples_per_class * 2);
+    
+    // ============================================================
+    // 3. MUESTREAR 50% POSITIVOS
+    // ============================================================
+    std::uniform_int_distribution<int> dist_pos(0, n_pos - 1);
+    std::vector<bool> pos_selected(n_pos, false);
+    
+    for (int i = 0; i < samples_per_class; i++) {
+        int random_idx = dist_pos(rng);
+        bootstrap_indices.push_back(pos_indices[random_idx]);
+        pos_selected[random_idx] = true;
+    }
+    
+    // ============================================================
+    // 4. MUESTREAR 50% NEGATIVOS
+    // ============================================================
+    std::uniform_int_distribution<int> dist_neg(0, n_neg - 1);
+    std::vector<bool> neg_selected(n_neg, false);
+    
+    for (int i = 0; i < samples_per_class; i++) {
+        int random_idx = dist_neg(rng);
+        bootstrap_indices.push_back(neg_indices[random_idx]);
+        neg_selected[random_idx] = true;
+    }
+    
+    // ============================================================
+    // 5. IDENTIFICAR OOB
+    // ============================================================
+    // OOB positivos
+    for (int i = 0; i < n_pos; i++) {
+        if (!pos_selected[i]) {
+            oob_indices.push_back(pos_indices[i]);
+        }
+    }
+    
+    // OOB negativos
+    for (int i = 0; i < n_neg; i++) {
+        if (!neg_selected[i]) {
+            oob_indices.push_back(neg_indices[i]);
+        }
+    }
+}
+
 // void testBootstrapSample(){
 //         std::cout << "\n=== TEST BOOTSTRAP SAMPLE ===" << std::endl;
     

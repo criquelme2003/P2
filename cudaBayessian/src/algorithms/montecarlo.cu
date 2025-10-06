@@ -18,10 +18,17 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
     std::vector<MonteCarloIteration> results(num_iterations);
     std::mt19937 rng(seed);
 
+    int *train_labels = new int[train_rows];
+    for (int i = 0; i < train_rows; i++)
+    {
+        // Column-major: target_col_index * train_rows + i
+        train_labels[i] = (int)train_data[target_col_index * train_rows + i];
+    }
+
     for (int iter = 0; iter < num_iterations; iter++)
     {
-        std::cout
-            << "Iteración Monte Carlo: " << iter + 1 << "/" << num_iterations << std::endl;
+        // std::cout
+        //     << "Iteración Monte Carlo: " << iter + 1 << "/" << num_iterations << std::endl;
 
         // Inicializar resultado de esta iteración
         MonteCarloIteration &current_result = results[iter];
@@ -31,7 +38,8 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
         // ============================================================
         std::vector<int> bootstrap_indices;
         std::vector<int> oob_indices;
-        bootstrapSample(train_rows, bootstrap_indices, oob_indices, rng);
+        bootstrapSampleBalanced(train_rows, train_labels,
+                                bootstrap_indices, oob_indices, rng);
 
         int n_bootstrap = bootstrap_indices.size(); // ≈ train_rows
         int n_oob = oob_indices.size();             // ≈ 0.37 * train_rows
@@ -39,8 +47,8 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
         current_result.n_bootstrap = n_bootstrap;
         current_result.n_oob = n_oob;
 
-        std::cout << "  Bootstrap: " << n_bootstrap << " muestras" << std::endl;
-        std::cout << "  OOB: " << n_oob << " muestras" << std::endl;
+        // std::cout << "  Bootstrap: " << n_bootstrap << " muestras" << std::endl;
+        // std::cout << "  OOB: " << n_oob << " muestras" << std::endl;
 
         // ============================================================
         // 2. CREAR SUBSET DE BOOTSTRAP
@@ -61,8 +69,8 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
         current_result.bootstrap_pos_count = bootstrap_pos_rows;
         current_result.bootstrap_neg_count = bootstrap_neg_rows;
 
-        std::cout << "  Bootstrap Pos: " << bootstrap_pos_rows << std::endl;
-        std::cout << "  Bootstrap Neg: " << bootstrap_neg_rows << std::endl;
+        // std::cout << "  Bootstrap Pos: " << bootstrap_pos_rows << std::endl;
+        // std::cout << "  Bootstrap Neg: " << bootstrap_neg_rows << std::endl;
 
         // ============================================================
         // 4. COPIAR DATOS BOOTSTRAP A GPU
@@ -109,8 +117,9 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
         // ============================================================
         float *log_diffs = new float[n_oob];
 
-        float prior_pos = (float)bootstrap_pos_rows / n_bootstrap;
-        float prior_neg = (float)bootstrap_neg_rows / n_bootstrap;
+        // fijos por desbalance de clases
+        float prior_pos = 0.5f;
+        float prior_neg = 0.5f;
 
         // Predecir diferencias logarítmicas
         predictLogDifferences(
@@ -138,47 +147,46 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
             thresholds[i] = threshold_min + i * threshold_step;
         }
 
-        float *youden_scores = new float[n_thresholds];
+        float *scores = new float[n_thresholds];
 
         evaluateThresholdsGPU(log_diffs, oob_labels, thresholds,
-                              youden_scores, n_oob, n_thresholds);
+                              scores, n_oob, n_thresholds);
 
         // ============================================================
         // 10. GUARDAR TODOS LOS UMBRALES Y YOUDEN SCORES
         // ============================================================
         current_result.all_thresholds.resize(n_thresholds);
-        current_result.all_youden_scores.resize(n_thresholds);
+        current_result.all_scores.resize(n_thresholds);
 
         for (int i = 0; i < n_thresholds; i++)
         {
             current_result.all_thresholds[i] = thresholds[i];
-            current_result.all_youden_scores[i] = youden_scores[i];
+            current_result.all_scores[i] = scores[i];
         }
 
         // ============================================================
         // 11. ENCONTRAR UMBRAL CON MÁXIMO YOUDEN
         // ============================================================
         float best_threshold = thresholds[0];
-        float best_youden = youden_scores[0];
+        float best_score = scores[0];
 
         for (int i = 1; i < n_thresholds; i++)
         {
-            if (youden_scores[i] > best_youden)
+            if (scores[i] > best_score)
             {
-                best_youden = youden_scores[i];
+                best_score = scores[i];
                 best_threshold = thresholds[i];
             }
         }
 
         current_result.optimal_threshold = best_threshold;
-        current_result.best_youden = best_youden;
+        current_result.best_score = best_score;
 
-        std::cout << "  Umbral óptimo: " << best_threshold
-                  << " (Youden: " << best_youden << ")" << std::endl;
 
         // ============================================================
         // 12. LIBERAR MEMORIA DE ESTA ITERACIÓN
         // ============================================================
+
         delete[] bootstrap_data;
         delete[] bootstrap_pos;
         delete[] bootstrap_neg;
@@ -187,7 +195,7 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
         delete[] oob_labels;
         delete[] log_diffs;
         delete[] thresholds;
-        delete[] youden_scores;
+        delete[] scores;
         delete[] stats_pos;
         delete[] stats_neg;
         cudaFree(d_bootstrap_pos);
@@ -195,7 +203,7 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
 
         std::cout << std::endl;
     }
-
+    delete[] train_labels;
     return results;
 }
 
@@ -203,16 +211,16 @@ std::vector<MonteCarloIteration> monteCarloThresholdSearch(
 void analyzeMonteCarloResults(const std::vector<MonteCarloIteration> &results)
 {
     float mean_threshold = 0.0f;
-    float mean_youden = 0.0f;
+    float mean_score = 0.0f;
 
     for (const auto &result : results)
     {
         mean_threshold += result.optimal_threshold;
-        mean_youden += result.best_youden;
+        mean_score += result.best_score;
     }
 
     mean_threshold /= results.size();
-    mean_youden /= results.size();
+    mean_score /= results.size();
 
     // Calcular desviación estándar
     float std_threshold = 0.0f;
@@ -228,7 +236,7 @@ void analyzeMonteCarloResults(const std::vector<MonteCarloIteration> &results)
     std::cout << "========================================" << std::endl;
     std::cout << "Umbral óptimo final: " << mean_threshold
               << " ± " << std_threshold << std::endl;
-    std::cout << "Youden promedio: " << mean_youden << std::endl;
+    std::cout << "score promedio: " << mean_score << std::endl;
     std::cout << "========================================\n"
               << std::endl;
 }

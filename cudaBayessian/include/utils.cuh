@@ -30,3 +30,11 @@ void bootstrapSample(int n_samples,
                      std::vector<int> &bootstrap_indices,
                      std::vector<int> &oob_indices,
                      std::mt19937 &rng);
+
+void bootstrapSampleBalanced(
+    int n_samples,
+    const int *labels, // Array con labels (0 o 1)
+    std::vector<int> &bootstrap_indices,
+    std::vector<int> &oob_indices,
+    std::mt19937 &rng);
+    

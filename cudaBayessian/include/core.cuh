@@ -17,11 +17,11 @@ struct MonteCarloIteration
 {
     // Mejor umbral y su Youden para esta iteración
     float optimal_threshold;
-    float best_youden;
+    float best_score;
 
     // TODOS los umbrales probados y sus Youden scores
     std::vector<float> all_thresholds;
-    std::vector<float> all_youden_scores;
+    std::vector<float> all_scores;
 
     // Información adicional de la iteración
     int n_bootstrap;

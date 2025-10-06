@@ -6,6 +6,7 @@
 #include <vector>
 #include <set>
 #include <random>
+#include <chrono>
 int main()
 {
 
@@ -79,7 +80,21 @@ int main()
                   << ", SD: " << stats_neg[j].sd << std::endl;
     }
 
+    // Record the starting time point
+    auto start = std::chrono::high_resolution_clock::now();
+
     std::vector<MonteCarloIteration> mc_results = monteCarloThresholdSearch(datos_train, train_rows, cols, targetColumnIndex, 1000);
+
+    // Record the ending time point
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Calculate the duration
+    auto duration = end - start;
+
+    // Convert the duration to milliseconds and get the count
+    auto milliseconds_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+    std::cout << 1000 << " iterations performed in " << milliseconds_elapsed << "ms (global)" << std::endl;
 
     analyzeMonteCarloResults(mc_results);
 
@@ -91,7 +106,7 @@ int main()
     }
     optimal_threshold /= mc_results.size();
 
-    std::cout << "Usando umbral final: " << optimal_threshold << std::endl;
+    std::cout << "Usando umbral final (según F2-SCORE): " << optimal_threshold << std::endl;
 
     // ========================================
     // FASE 2: ENTRENAMIENTO FINAL
@@ -139,8 +154,12 @@ int main()
     delete[] temp_pos;
     delete[] temp_neg;
 
-    float prior_pos = (float)final_pos_count / train_rows;
-    float prior_neg = (float)final_neg_count / train_rows;
+    // float prior_pos = (float)final_pos_count / train_rows;
+    // float prior_neg = (float)final_neg_count / train_rows;
+
+    // priors balanceados
+    float prior_pos = 0.5f;
+    float prior_neg = 0.5f;
 
     std::cout << "Priors: P(pos)=" << prior_pos << ", P(neg)=" << prior_neg << std::endl;
 
@@ -178,7 +197,7 @@ int main()
     std::cout << "Umbral usado: " << optimal_threshold << std::endl;
     printMetrics(metricas_optimized);
 
-       delete[] final_stats_pos;
+    delete[] final_stats_pos;
     delete[] final_stats_neg;
     delete[] test_data_rowmajor;
     delete[] predictions;
